@@ -161,7 +161,7 @@
         
         const SYSTEM_PROMPT = {
             role: "system",
-            content: `Sen FreeAI teknik asistanısın. Türkçe yanıt ver. Matematiksel formüllerde LaTeX kullan.`
+            content: `Sen FreeAI teknik asistanısın. Türkçe yanıt ver. Matematiksel formüllerde LaTeX kullan. Tablo oluşturma, Kalın font, Ara çizgi ve başlık kullanabilirsin.`
         };
 
         const BRAND_DATA = {
@@ -274,9 +274,39 @@
             const wrapper = document.getElementById('messages-wrapper');
             const div = document.createElement('div');
             div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} mb-6`;
+            
+            // --- MATH FIX START ---
+            // Marked.js, önceki "___" formatını italic/bold sandığı için bozuyordu.
+            // Artık tamamen alphanumeric bir placeholder kullanıyoruz.
+            let mathBlocks = [];
+            let protectedText = text || '';
+
+            const protect = (regex) => {
+                protectedText = protectedText.replace(regex, (match) => {
+                    mathBlocks.push(match);
+                    return `MATHPLACEHOLDER${mathBlocks.length - 1}ENDMATHPLACEHOLDER`;
+                });
+            };
+
+            // Regex sırası önemli: Önce display math, sonra inline
+            protect(/\$\$([\s\S]*?)\$\$/g);
+            protect(/\\\[([\s\S]*?)\\\]/g);
+            protect(/\\\(([\s\S]*?)\\\)/g);
+            protect(/\$([^$\n]+?)\$/g);
+
+            // Markdown parse
+            let htmlContent = marked.parse(protectedText);
+
+            // Blokları geri yükle
+            mathBlocks.forEach((block, index) => {
+                const placeholder = `MATHPLACEHOLDER${index}ENDMATHPLACEHOLDER`;
+                htmlContent = htmlContent.split(placeholder).join(block);
+            });
+            // --- MATH FIX END ---
+
             div.innerHTML = `
                 <div class="relative ${role === 'user' ? 'bg-blue-600 text-white' : 'bg-[#161b22] border border-gray-800 text-gray-200'} p-5 rounded-2xl max-w-[95%] sm:max-w-[80%] shadow-xl">
-                    <div class="markdown-body text-sm md:text-base leading-relaxed">${marked.parse(text)}</div>
+                    <div class="markdown-body text-sm md:text-base leading-relaxed">${htmlContent}</div>
                 </div>
             `;
             wrapper.appendChild(div);
@@ -285,7 +315,9 @@
             renderMathInElement(div, {
                 delimiters: [
                     {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false}
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
                 ],
                 throwOnError: false
             });
